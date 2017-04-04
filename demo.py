@@ -4,42 +4,84 @@ from faster_rcnn import network
 from faster_rcnn.faster_rcnn import FasterRCNN
 from faster_rcnn.utils.timer import Timer
 
+import seaborn as sns
+import matplotlib.pyplot as plt
+import os
+
+def visualize(image, bbox, scores, names, classes, save_name=None):
+    cls_to_ind = { cls:ind for ind, cls in enumerate(classes) }
+
+    clrs = sns.color_palette("Set2", len(classes))
+    plt.figure(1)
+    plt.clf()
+    plt.axis('off')
+    im2show = np.copy(image.astype(np.uint8))
+    plt.imshow(im2show[:,:,(2,1,0)])
+    axe = plt.gca()
+    bLabel = np.zeros(len(classes))
+    for det, score, objName in zip(bbox, scores, names):
+        det = tuple(int(x) for x in det)
+        clr = clrs[ cls_to_ind[objName] ]
+        if bLabel[ cls_to_ind[objName] ] == 0:
+            rect = plt.Rectangle( (det[0], det[1]), det[2]-det[0], det[3]-det[1], 
+                fill=False, edgecolor=clr, linewidth=1.5, label=objName)
+            bLabel[ cls_to_ind[objName] ] = 1
+        else:
+            rect = plt.Rectangle( (det[0], det[1]), det[2]-det[0], det[3]-det[1], 
+                fill=False, edgecolor=clr, linewidth=1.5)            
+
+        axe.add_patch(rect)
+        axe.text(det[0], det[1]-2, '%.3f'%score,
+            bbox=dict(facecolor=clr, alpha=0.5), fontsize=7, color='white')
+       
+    if any(bLabel): 
+        leg = plt.legend(loc='best')
+        for text in leg.get_texts():
+            plt.setp(text, color = 'w')
+
+    plt.tight_layout()
+
+    if not save_name:
+        save_name = os.path.join('demo', 'out.jpg')
+    plt.savefig(save_name, dpi=200)
+
 
 def test():
-    import os
-    im_file = 'demo/004545.jpg'
-    # im_file = 'data/VOCdevkit2007/VOC2007/JPEGImages/009036.jpg'
-    # im_file = '/media/longc/Data/data/2DMOT2015/test/ETH-Crossing/img1/000100.jpg'
+    
+    # im_file = 'demo/004545.jpg'
+    # im_file = 'demo/000013.png'
+    # im_file = 'demo/000068.png'
+    # im_file = 'demo/000035.jpg'
+    im_file = 'demo/000007.png'
+        
     image = cv2.imread(im_file)
 
-    model_file = '/media/longc/Data/models/VGGnet_fast_rcnn_iter_70000.h5'
-    # model_file = '/media/longc/Data/models/faster_rcnn_pytorch3/faster_rcnn_100000.h5'
-    # model_file = '/media/longc/Data/models/faster_rcnn_pytorch2/faster_rcnn_2000.h5'
-    detector = FasterRCNN()
+    model_file = 'models/saved_model3/faster_rcnn_100000.h5'
+
+    classes = ('__background__', 'Pedestrian', 'Car', 'Cyclist')
+    detector = FasterRCNN(classes=classes)    
+
     network.load_net(model_file, detector)
     detector.cuda()
     detector.eval()
     print('load model successfully!')
 
-    # network.save_net(r'/media/longc/Data/models/VGGnet_fast_rcnn_iter_70000.h5', detector)
-    # print('save model succ')
+    detector.MAX_SIZE = 3000
+    print 'Detector scale: %d ->' % detector.SCALES[0],
+    detector.SCALES = (375,)
+    print '%d.' % detector.SCALES[0]
+
+    dummy = np.zeros((755, 2500, 3), dtype=np.uint8) + 128    
+    for ii in xrange(10):
+        detector.detect(dummy, 0.7)
 
     t = Timer()
-    t.tic()
-    # image = np.zeros(shape=[600, 800, 3], dtype=np.uint8) + 255
-    dets, scores, classes = detector.detect(image, 0.7)
+    t.tic()    
+    dets, scores, clsNames = detector.detect(image, 0.7)
     runtime = t.toc()
     print('total spend: {}s'.format(runtime))
 
-    im2show = np.copy(image)
-    for i, det in enumerate(dets):
-        det = tuple(int(x) for x in det)
-        cv2.rectangle(im2show, det[0:2], det[2:4], (255, 205, 51), 2)
-        cv2.putText(im2show, '%s: %.3f' % (classes[i], scores[i]), (det[0], det[1] + 15), cv2.FONT_HERSHEY_PLAIN,
-                    1.0, (0, 0, 255), thickness=1)
-    cv2.imwrite(os.path.join('demo', 'out.jpg'), im2show)
-    cv2.imshow('demo', im2show)
-    cv2.waitKey(0)
+    visualize(image, dets, scores, clsNames, classes, im_file.replace('/', '/[out]'))
 
 
 if __name__ == '__main__':

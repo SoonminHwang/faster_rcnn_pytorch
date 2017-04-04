@@ -22,6 +22,7 @@ try:
 except ImportError:
     CrayonClient = None
 
+from demo import visualize
 
 def log_print(text, color=None, on_color=None, attrs=None):
     if cprint is not None:
@@ -30,17 +31,29 @@ def log_print(text, color=None, on_color=None, attrs=None):
         print(text)
 
 
+# Exp Date
+nowStr = datetime.now().strftime('kittivoc_%Y-%m-%d_%H-%M')
+# print nowStr
 
 # hyper-parameters
 # ------------
-imdb_name = 'voc_2007_trainval'
-cfg_file = 'experiments/cfgs/faster_rcnn_end2end.yml'
+imdb_name = 'kittivoc_train'
+cfg_file = 'experiments/cfgs/faster_rcnn_end2end_kitti.yml'
 pretrained_model = 'data/pretrained_model/VGG_imagenet.npy'
-output_dir = 'models/saved_model3'
+output_dir = os.path.join('outputs', 'kitti_vgg16_rgb', nowStr )
+
+if not os.path.exists(output_dir):
+    os.makedirs(output_dir)
+
+print( '##### Output dir: %s\n' % output_dir )
+
+
+import shutil
+shutil.copy(cfg_file, os.path.join(output_dir, os.path.basename(cfg_file)))
 
 start_step = 0
-end_step = 100000
-lr_decay_steps = {60000, 80000}
+end_step = 300000
+lr_decay_steps = {150000, 200000}
 lr_decay = 1./10
 
 rand_seed = 1024
@@ -64,11 +77,17 @@ log_interval = cfg.TRAIN.LOG_IMAGE_ITERS
 
 # load data
 imdb = get_imdb(imdb_name)
+print("[Source] # of training images: %d" % imdb.num_images)
+
+imdb.append_flipped_images()
+print("[Augmented] # of training images: %d" % imdb.num_images)
+
 rdl_roidb.prepare_roidb(imdb)
 roidb = imdb.roidb
 data_layer = RoIDataLayer(roidb, imdb.num_classes)
 
 # load net
+# with torch.cuda.device(1):
 net = FasterRCNN(classes=imdb.classes, debug=_DEBUG)
 network.weights_normal_init(net, dev=0.01)
 network.load_pretrained_npy(net, pretrained_model)
@@ -84,16 +103,15 @@ net.cuda()
 net.train()
 
 params = list(net.parameters())
-# optimizer = torch.optim.Adam(params[-8:], lr=lr)
+# optimizer = torch.optim.Adam(params[-8:], lr=lr, weight_decay=weight_decay)
 optimizer = torch.optim.SGD(params[8:], lr=lr, momentum=momentum, weight_decay=weight_decay)
-
-if not os.path.exists(output_dir):
-    os.mkdir(output_dir)
 
 # tensorboad
 use_tensorboard = use_tensorboard and CrayonClient is not None
 if use_tensorboard:
-    cc = CrayonClient(hostname='127.0.0.1')
+    #cc = CrayonClient(hostname='127.0.0.1')
+    print( '##### Use tensorboard via crayon #####\n')
+    cc = CrayonClient(hostname='143.248.39.34', port=8889)
     if remove_all_log:
         cc.remove_all_experiments()
     if exp_name is None:
@@ -166,13 +184,28 @@ for step in range(start_step, end_step+1):
                       'rcnn_box': float(net.loss_box.data.cpu().numpy()[0])}
             exp.add_scalar_dict(losses, step=step)
 
-    if (step % 10000 == 0) and step > 0:
+    if (step % cfg.TRAIN.SNAPSHOT_ITERS == 0) and step > 0:
         save_name = os.path.join(output_dir, 'faster_rcnn_{}.h5'.format(step))
         network.save_net(save_name, net)
         print('save model: {}'.format(save_name))
+
+        # Save tensorboard log
+        save_name = save_name.replace('h5', 'log')
+        exp.to_zip(save_name)
+
+        # Current detection
+        save_name = save_name.replace('log', 'jpg')
+        image = im_data[0] + cfg.PIXEL_MEANS
+                
+        net.eval()        
+        dets, scores, classes = net.detect(image, 0.7)        
+        visualize(image, dets, scores, classes, imdb.classes, save_name)
+        net.train()
+
     if step in lr_decay_steps:
         lr *= lr_decay
         optimizer = torch.optim.SGD(params[8:], lr=lr, momentum=momentum, weight_decay=weight_decay)
+        # optimizer = torch.optim.Adam(params[-8:], lr=lr, weight_decay=weight_decay)
 
     if re_cnt:
         tp, tf, fg, bg = 0., 0., 0, 0

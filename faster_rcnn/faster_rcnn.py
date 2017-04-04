@@ -19,6 +19,7 @@ from network import Conv2d, FC
 from roi_pooling.modules.roi_pool import RoIPool
 from vgg16 import VGG16
 
+from fast_rcnn.config import cfg
 
 def nms_detections(pred_boxes, scores, nms_thresh, inds=None):
     dets = np.hstack((pred_boxes,
@@ -31,15 +32,17 @@ def nms_detections(pred_boxes, scores, nms_thresh, inds=None):
 
 class RPN(nn.Module):
     _feat_stride = [16, ]
-    anchor_scales = [8, 16, 32]
+    # anchor_scales = [8, 16, 32]
 
     def __init__(self):
         super(RPN, self).__init__()
 
         self.features = VGG16(bn=False)
         self.conv1 = Conv2d(512, 512, 3, same_padding=True)
-        self.score_conv = Conv2d(512, len(self.anchor_scales) * 3 * 2, 1, relu=False, same_padding=False)
-        self.bbox_conv = Conv2d(512, len(self.anchor_scales) * 3 * 4, 1, relu=False, same_padding=False)
+        # self.score_conv = Conv2d(512, len(self.anchor_scales) * 3 * 2, 1, relu=False, same_padding=False)
+        # self.bbox_conv = Conv2d(512, len(self.anchor_scales) * 3 * 4, 1, relu=False, same_padding=False)
+        self.score_conv = Conv2d(512, cfg.NUM_ANCHORS * 2, 1, relu=False, same_padding=False)
+        self.bbox_conv = Conv2d(512, cfg.NUM_ANCHORS * 4, 1, relu=False, same_padding=False)
 
         # loss
         self.cross_entropy = None
@@ -60,21 +63,26 @@ class RPN(nn.Module):
         rpn_cls_score = self.score_conv(rpn_conv1)
         rpn_cls_score_reshape = self.reshape_layer(rpn_cls_score, 2)
         rpn_cls_prob = F.softmax(rpn_cls_score_reshape)
-        rpn_cls_prob_reshape = self.reshape_layer(rpn_cls_prob, len(self.anchor_scales)*3*2)
+        # rpn_cls_prob_reshape = self.reshape_layer(rpn_cls_prob, len(self.anchor_scales)*3*2)
+        rpn_cls_prob_reshape = self.reshape_layer(rpn_cls_prob, cfg.NUM_ANCHORS*2)
 
         # rpn boxes
         rpn_bbox_pred = self.bbox_conv(rpn_conv1)
 
         # proposal layer
         cfg_key = 'TRAIN' if self.training else 'TEST'
+        # rois = self.proposal_layer(rpn_cls_prob_reshape, rpn_bbox_pred, im_info,
+        #                            cfg_key, self._feat_stride, self.anchor_scales)
         rois = self.proposal_layer(rpn_cls_prob_reshape, rpn_bbox_pred, im_info,
-                                   cfg_key, self._feat_stride, self.anchor_scales)
+                                   cfg_key, self._feat_stride)
 
         # generating training labels and build the rpn loss
         if self.training:
             assert gt_boxes is not None
+            # rpn_data = self.anchor_target_layer(rpn_cls_score, gt_boxes, gt_ishard, dontcare_areas,
+            #                                     im_info, self._feat_stride, self.anchor_scales)
             rpn_data = self.anchor_target_layer(rpn_cls_score, gt_boxes, gt_ishard, dontcare_areas,
-                                                im_info, self._feat_stride, self.anchor_scales)
+                                                im_info, self._feat_stride)
             self.cross_entropy, self.loss_box = self.build_loss(rpn_cls_score_reshape, rpn_bbox_pred, rpn_data)
 
         return features, rois
@@ -116,15 +124,18 @@ class RPN(nn.Module):
         return x
 
     @staticmethod
-    def proposal_layer(rpn_cls_prob_reshape, rpn_bbox_pred, im_info, cfg_key, _feat_stride, anchor_scales):
+    def proposal_layer(rpn_cls_prob_reshape, rpn_bbox_pred, im_info, cfg_key, _feat_stride):
+    # def proposal_layer(rpn_cls_prob_reshape, rpn_bbox_pred, im_info, cfg_key, _feat_stride, anchor_scales):
         rpn_cls_prob_reshape = rpn_cls_prob_reshape.data.cpu().numpy()
         rpn_bbox_pred = rpn_bbox_pred.data.cpu().numpy()
-        x = proposal_layer_py(rpn_cls_prob_reshape, rpn_bbox_pred, im_info, cfg_key, _feat_stride, anchor_scales)
+        # x = proposal_layer_py(rpn_cls_prob_reshape, rpn_bbox_pred, im_info, cfg_key, _feat_stride, anchor_scales)
+        x = proposal_layer_py(rpn_cls_prob_reshape, rpn_bbox_pred, im_info, cfg_key, _feat_stride)
         x = network.np_to_variable(x, is_cuda=True)
         return x.view(-1, 5)
 
     @staticmethod
-    def anchor_target_layer(rpn_cls_score, gt_boxes, gt_ishard, dontcare_areas, im_info, _feat_stride, anchor_scales):
+    def anchor_target_layer(rpn_cls_score, gt_boxes, gt_ishard, dontcare_areas, im_info, _feat_stride):
+    # def anchor_target_layer(rpn_cls_score, gt_boxes, gt_ishard, dontcare_areas, im_info, _feat_stride, anchor_scales):
         """
         rpn_cls_score: for pytorch (1, Ax2, H, W) bg/fg scores of previous conv layer
         gt_boxes: (G, 5) vstack of [x1, y1, x2, y2, class]
@@ -144,8 +155,10 @@ class RPN(nn.Module):
         beacuse the numbers of bgs and fgs mays significiantly different
         """
         rpn_cls_score = rpn_cls_score.data.cpu().numpy()
+        # rpn_labels, rpn_bbox_targets, rpn_bbox_inside_weights, rpn_bbox_outside_weights = \
+        #     anchor_target_layer_py(rpn_cls_score, gt_boxes, gt_ishard, dontcare_areas, im_info, _feat_stride, anchor_scales)
         rpn_labels, rpn_bbox_targets, rpn_bbox_inside_weights, rpn_bbox_outside_weights = \
-            anchor_target_layer_py(rpn_cls_score, gt_boxes, gt_ishard, dontcare_areas, im_info, _feat_stride, anchor_scales)
+            anchor_target_layer_py(rpn_cls_score, gt_boxes, gt_ishard, dontcare_areas, im_info, _feat_stride)
 
         rpn_labels = network.np_to_variable(rpn_labels, is_cuda=True, dtype=torch.LongTensor)
         rpn_bbox_targets = network.np_to_variable(rpn_bbox_targets, is_cuda=True)
@@ -315,8 +328,9 @@ class FasterRCNN(nn.Module):
         # nms
         if nms and pred_boxes.shape[0] > 0:
             pred_boxes, scores, inds = nms_detections(pred_boxes, scores, 0.3, inds=inds)
-
-        return pred_boxes, scores, self.classes[inds]
+    
+        # return pred_boxes, scores, self.classes[inds]
+        return pred_boxes, scores, [ self.classes[ii] for ii in inds ]
 
     def detect(self, image, thr=0.3):
         im_data, im_scales = self.get_image_blob(image)

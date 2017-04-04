@@ -8,7 +8,8 @@
 import numpy as np
 import yaml
 
-from .generate_anchors import generate_anchors
+# from .generate_anchors import generate_anchors
+from .generate_anchors import kitti_kmeans_anchors_2x
 
 # TODO: make fast_rcnn irrelevant
 # >>>> obsolete, because it depends on sth outside of this project
@@ -26,8 +27,9 @@ transformations to a set of regular boxes (called "anchors").
 """
 
 
-def proposal_layer(rpn_cls_prob_reshape, rpn_bbox_pred, im_info, cfg_key, _feat_stride=[16, ],
-                   anchor_scales=[8, 16, 32]):
+# def proposal_layer(rpn_cls_prob_reshape, rpn_bbox_pred, im_info, cfg_key, _feat_stride=[16, ],
+#                    anchor_scales=[8, 16, 32]):
+def proposal_layer(rpn_cls_prob_reshape, rpn_bbox_pred, im_info, cfg_key, _feat_stride=[16, ]):
     """
     Parameters
     ----------
@@ -58,7 +60,8 @@ def proposal_layer(rpn_cls_prob_reshape, rpn_bbox_pred, im_info, cfg_key, _feat_
     #layer_params = yaml.load(self.param_str_)
 
     """
-    _anchors = generate_anchors(scales=np.array(anchor_scales))
+    # _anchors = generate_anchors(scales=np.array(anchor_scales))
+    _anchors = kitti_kmeans_anchors_2x(cfg.NUM_ANCHORS)    
     _num_anchors = _anchors.shape[0]
     # rpn_cls_prob_reshape = np.transpose(rpn_cls_prob_reshape,[0,3,1,2]) #-> (1 , 2xA, H , W)
     # rpn_bbox_pred = np.transpose(rpn_bbox_pred,[0,3,1,2])              # -> (1 , Ax4, H , W)

@@ -10,7 +10,8 @@ import yaml
 import numpy as np
 import numpy.random as npr
 
-from .generate_anchors import generate_anchors
+# from .generate_anchors import generate_anchors
+from .generate_anchors import kitti_kmeans_anchors_2x
 from ..utils.cython_bbox import bbox_overlaps, bbox_intersections
 
 # TODO: make fast_rcnn irrelevant
@@ -22,9 +23,9 @@ from ..fast_rcnn.bbox_transform import bbox_transform
 
 DEBUG = False
 
-
-def anchor_target_layer(rpn_cls_score, gt_boxes, gt_ishard, dontcare_areas, im_info, _feat_stride=[16, ],
-                        anchor_scales=[4, 8, 16, 32]):
+def anchor_target_layer(rpn_cls_score, gt_boxes, gt_ishard, dontcare_areas, im_info, _feat_stride=[16, ]):
+# def anchor_target_layer(rpn_cls_score, gt_boxes, gt_ishard, dontcare_areas, im_info, _feat_stride=[16, ],
+#                         anchor_scales=[4, 8, 16, 32]):
     """
     Assign anchors to ground-truth targets. Produces anchor classification
     labels and bounding-box regression targets.
@@ -47,7 +48,8 @@ def anchor_target_layer(rpn_cls_score, gt_boxes, gt_ishard, dontcare_areas, im_i
     rpn_bbox_outside_weights: (HxWxA, 4) used to balance the fg/bg,
                             beacuse the numbers of bgs and fgs mays significiantly different
     """
-    _anchors = generate_anchors(scales=np.array(anchor_scales))
+    # _anchors = generate_anchors(scales=np.array(anchor_scales))
+    _anchors = kitti_kmeans_anchors_2x(cfg.NUM_ANCHORS)
     _num_anchors = _anchors.shape[0]
 
     if DEBUG:

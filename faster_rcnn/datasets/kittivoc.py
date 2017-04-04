@@ -38,11 +38,15 @@ class kittivoc(imdb):
                             else devkit_path
         self._data_path = self._devkit_path
         self._classes = ('__background__', # always index 0
-                         'pedestrian', 'car', 'cyclist')
+                         'Pedestrian', 'Car', 'Cyclist')
         self._class_to_ind = dict(zip(self.classes, xrange(self.num_classes)))
         self._image_ext = '.jpg'
-        self._image_index = self._load_image_set_index()
-        self._remove_empty_samples()
+        # self._image_index = self._load_image_set_index()
+        
+        with open( os.path.join(self._data_path, 'ImageSets', 'Main', image_set + '.txt'), 'r' ) as f:
+            self._image_index = [ num.rstrip('\n') for num in f.readlines() ] 
+
+        # self._remove_empty_samples()
         # Default to roidb handler
         #self._roidb_handler = self.selective_search_roidb
         self._roidb_handler = self.gt_roidb
@@ -80,18 +84,18 @@ class kittivoc(imdb):
                 'Path does not exist: {}'.format(image_path)
         return image_path
 
-    def _load_image_set_index(self):
-        """
-        Load the indexes listed in this dataset's image set file.
-        """
-        # Example path to image set file:
-        image_set_file = os.path.join(self._data_path, 'ImageSets', 'Main',
-                                      self._image_set + '.txt')
-        assert os.path.exists(image_set_file), \
-                'Path does not exist: {}'.format(image_set_file)
-        with open(image_set_file) as f:
-            image_index = [x.strip() for x in f.readlines()]
-        return image_index
+    # def _load_image_set_index(self):
+    #     """
+    #     Load the indexes listed in this dataset's image set file.
+    #     """
+    #     # Example path to image set file:
+    #     image_set_file = os.path.join(self._data_path, 'ImageSets', 'Main',
+    #                                   self._image_set + '.txt')
+    #     assert os.path.exists(image_set_file), \
+    #             'Path does not exist: {}'.format(image_set_file)
+    #     with open(image_set_file) as f:
+    #         image_index = [x.strip() for x in f.readlines()]
+    #     return image_index
 
     def _get_default_path(self):
         """
@@ -198,7 +202,8 @@ class kittivoc(imdb):
             objs = tree.findall('object')
             non_diff_objs = [
                 obj for obj in objs if \
-                    int(obj.find('difficult').text) == 0 and obj.find('name').text.lower().strip() != 'dontcare']
+                    int(obj.find('difficult').text) == 0 and obj.find('name').text.strip() != 'DontCare']
+                    # int(obj.find('difficult').text) == 0 and obj.find('name').text.lower().strip() != 'dontcare']
             num_objs = len(non_diff_objs)
             if num_objs == 0:
                 print index,
@@ -244,10 +249,11 @@ class kittivoc(imdb):
             difficult = 0 if diffc == None else int(diffc.text)
             ishards[ix] = difficult
 
-            class_name = obj.find('name').text.lower().strip()
-            if class_name != 'dontcare':
+            # class_name = obj.find('name').text.lower().strip()
+            class_name = obj.find('name').text.strip()
+            if class_name != 'DontCare':
                 care_inds = np.append(care_inds, np.asarray([ix], dtype=np.int32))
-            if class_name == 'dontcare':
+            if class_name == 'DontCare':
                 dontcare_inds = np.append(dontcare_inds, np.asarray([ix], dtype=np.int32))
                 boxes[ix, :] = [x1, y1, x2, y2]
                 continue
@@ -289,91 +295,133 @@ class kittivoc(imdb):
         path = os.path.join(filedir, filename)
         return path
 
-    def _write_voc_results_file(self, all_boxes):
-        for cls_ind, cls in enumerate(self.classes):
-            if cls == '__background__':
-                continue
-            print 'Writing {} VOC results file'.format(cls)
-            filename = self._get_voc_results_file_template().format(cls)
-            with open(filename, 'wt') as f:
-                for im_ind, index in enumerate(self.image_index):
-                    dets = all_boxes[cls_ind][im_ind]
-                    if dets == []:
-                        continue
-                    # the VOCdevkit expects 1-based indices
-                    for k in xrange(dets.shape[0]):
-                        f.write('{:s} {:.3f} {:.1f} {:.1f} {:.1f} {:.1f}\n'.
-                            format(index, dets[k, -1],              # filename(stem), score
-                                   dets[k, 0] + 1, dets[k, 1] + 1,  # x1, y1, x2, y2
-                                   dets[k, 2] + 1, dets[k, 3] + 1))
+    def _kitti_results_template(self):
+        # class string, x1 y1 x2 y2, score
+        resStr = '{:s} -1 -1 -10 {:.2f} {:.2f} {:.2f} {:.2f} -1 -1 -1 -1000 -1000 -1000 -10 {:.4f}\n'
+        return resStr
 
-    def _do_python_eval(self, output_dir = 'output'):
-        annopath = os.path.join(
-            self._devkit_path,
-            'Annotations', '{:s}.xml')
-        imagesetfile = os.path.join(
-            self._devkit_path,
-            'ImageSets', 'Main',
-            self._image_set + '.txt')
-        cachedir = os.path.join(self._devkit_path, 'annotations_cache')
-        aps = []
-        # The PASCAL VOC metric changed in 2010
-        use_07_metric = False
-        print 'VOC07 metric? ' + ('Yes' if use_07_metric else 'No')
-        if not os.path.isdir(output_dir):
-            os.mkdir(output_dir)
-        for i, cls in enumerate(self._classes):
-            if cls == '__background__':
-                continue
-            filename = self._get_voc_results_file_template().format(cls)
-            rec, prec, ap = voc_eval(filename, annopath, imagesetfile, cls, cachedir,
-                                     ovthresh=0.5, use_07_metric = use_07_metric)
-            aps += [ap]
-            print('AP for {} = {:.4f}'.format(cls, ap))
-            with open(os.path.join(output_dir, cls + '_pr.pkl'), 'w') as f:
-                cPickle.dump({'rec': rec, 'prec': prec, 'ap': ap}, f)
-        print('Mean AP = {:.4f}'.format(np.mean(aps)))
-        print('~~~~~~~~')
-        print('Results:')
-        for ap in aps:
-            print('{:.3f}'.format(ap))
-        print('{:.3f}'.format(np.mean(aps)))
-        print('~~~~~~~~')
-        print('')
-        print('--------------------------------------------------------------')
-        print('Results computed with the **unofficial** Python eval code.')
-        print('Results should be very close to the official MATLAB eval code.')
-        print('Recompute with `./tools/reval.py --matlab ...` for your paper.')
-        print('-- Thanks, The Management')
-        print('--------------------------------------------------------------')
+    def _write_kitti_results_file(self, all_boxes, output_dir):
+        # all detections are collected into:
+        #    all_boxes[cls][image] = N x 5 array of detections in
+        #    (x1, y1, x2, y2, score)
+        
+        for im_ind, index in enumerate(self.image_index):
+            im_name = os.path.basename( self.image_path_at(im_ind) )
+            im_name = im_name.replace('jpg', 'txt')
+            
+            with open(os.path.join(output_dir, im_name), 'w') as f:
 
-    def _do_matlab_eval(self, output_dir='output'):
-        print '-----------------------------------------------------'
-        print 'Computing results with the official MATLAB eval code.'
-        print '-----------------------------------------------------'
-        path = os.path.join(cfg.ROOT_DIR, 'lib', 'datasets',
-                            'VOCdevkit-matlab-wrapper')
-        cmd = 'cd {} && '.format(path)
-        cmd += '{:s} -nodisplay -nodesktop '.format(cfg.MATLAB)
-        cmd += '-r "dbstop if error; '
-        cmd += 'voc_eval(\'{:s}\',\'{:s}\',\'{:s}\',\'{:s}\'); quit;"' \
-               .format(self._devkit_path, self._get_comp_id(),
-                       self._image_set, output_dir)
-        print('Running:\n{}'.format(cmd))
-        status = subprocess.call(cmd, shell=True)
+                # for cls_ind, cls in enumerate(self.classes[:-1]):
+                for cls_ind, cls in enumerate(self.classes):
+                    if cls == '__background__': continue                
+                    
+                    dts = all_boxes[cls_ind][im_ind].astype(np.float)
+                    if dts == []: continue
+
+                    for dt in dts:
+                        f.write( 
+                            self._kitti_results_template().format(cls, dt[0], dt[1], dt[2], dt[3], dt[4])
+                        )
+
+    def _do_python_eval(self, result_dir):
+        from kitti_eval import EvalKITTI
+        # gtDir = os.path.join( cfg.ROOT_DIR, 'data', 'kitti', 'annotations', self._image_set + self._year )
+        gtDir = os.path.join( 'data', 'KITTI', 'training', 'label_2' )
+                
+        if os.path.exists(gtDir):
+            # validation set
+            eval_kitti = EvalKITTI(gtDir, result_dir, basePth=cfg.ROOT_DIR)
+            eval_kitti.evaluate()
+        else:
+            # test set
+            print '"%s" does not exist. Cannot evaluate detection results.'
+
+    # def _write_voc_results_file(self, all_boxes):
+    #     for cls_ind, cls in enumerate(self.classes):
+    #         if cls == '__background__':
+    #             continue
+    #         print 'Writing {} VOC results file'.format(cls)
+    #         filename = self._get_voc_results_file_template().format(cls)
+    #         with open(filename, 'wt') as f:
+    #             for im_ind, index in enumerate(self.image_index):
+    #                 dets = all_boxes[cls_ind][im_ind]
+    #                 if dets == []:
+    #                     continue
+    #                 # the VOCdevkit expects 1-based indices
+    #                 for k in xrange(dets.shape[0]):
+    #                     f.write('{:s} {:.3f} {:.1f} {:.1f} {:.1f} {:.1f}\n'.
+    #                         format(index, dets[k, -1],              # filename(stem), score
+    #                                dets[k, 0] + 1, dets[k, 1] + 1,  # x1, y1, x2, y2
+    #                                dets[k, 2] + 1, dets[k, 3] + 1))
+    # 
+    # def _do_python_eval(self, output_dir = 'output'):
+    #     annopath = os.path.join(
+    #         self._devkit_path,
+    #         'Annotations', '{:s}.xml')
+    #     imagesetfile = os.path.join(
+    #         self._devkit_path,
+    #         'ImageSets', 'Main',
+    #         self._image_set + '.txt')
+    #     cachedir = os.path.join(self._devkit_path, 'annotations_cache')
+    #     aps = []
+    #     # The PASCAL VOC metric changed in 2010
+    #     use_07_metric = False
+    #     print 'VOC07 metric? ' + ('Yes' if use_07_metric else 'No')
+    #     if not os.path.isdir(output_dir):
+    #         os.mkdir(output_dir)
+    #     for i, cls in enumerate(self._classes):
+    #         if cls == '__background__':
+    #             continue
+    #         filename = self._get_voc_results_file_template().format(cls)
+    #         rec, prec, ap = voc_eval(filename, annopath, imagesetfile, cls, cachedir,
+    #                                  ovthresh=0.5, use_07_metric = use_07_metric)
+    #         aps += [ap]
+    #         print('AP for {} = {:.4f}'.format(cls, ap))
+    #         with open(os.path.join(output_dir, cls + '_pr.pkl'), 'w') as f:
+    #             cPickle.dump({'rec': rec, 'prec': prec, 'ap': ap}, f)
+    #     print('Mean AP = {:.4f}'.format(np.mean(aps)))
+    #     print('~~~~~~~~')
+    #     print('Results:')
+    #     for ap in aps:
+    #         print('{:.3f}'.format(ap))
+    #     print('{:.3f}'.format(np.mean(aps)))
+    #     print('~~~~~~~~')
+    #     print('')
+    #     print('--------------------------------------------------------------')
+    #     print('Results computed with the **unofficial** Python eval code.')
+    #     print('Results should be very close to the official MATLAB eval code.')
+    #     print('Recompute with `./tools/reval.py --matlab ...` for your paper.')
+    #     print('-- Thanks, The Management')
+    #     print('--------------------------------------------------------------')
+
+    # def _do_matlab_eval(self, output_dir='output'):
+    #     print '-----------------------------------------------------'
+    #     print 'Computing results with the official MATLAB eval code.'
+    #     print '-----------------------------------------------------'
+    #     path = os.path.join(cfg.ROOT_DIR, 'lib', 'datasets',
+    #                         'VOCdevkit-matlab-wrapper')
+    #     cmd = 'cd {} && '.format(path)
+    #     cmd += '{:s} -nodisplay -nodesktop '.format(cfg.MATLAB)
+    #     cmd += '-r "dbstop if error; '
+    #     cmd += 'voc_eval(\'{:s}\',\'{:s}\',\'{:s}\',\'{:s}\'); quit;"' \
+    #            .format(self._devkit_path, self._get_comp_id(),
+    #                    self._image_set, output_dir)
+    #     print('Running:\n{}'.format(cmd))
+    #     status = subprocess.call(cmd, shell=True)
 
 
     def evaluate_detections(self, all_boxes, output_dir):
-        self._write_voc_results_file(all_boxes)
+        # self._write_voc_results_file(all_boxes)
+        self._write_kitti_results_file(all_boxes, output_dir)
         self._do_python_eval(output_dir)
-        if self.config['matlab_eval']:
-            self._do_matlab_eval(output_dir)
-        if self.config['cleanup']:
-            for cls in self._classes:
-                if cls == '__background__':
-                    continue
-                filename = self._get_voc_results_file_template().format(cls)
-                os.remove(filename)
+        # if self.config['matlab_eval']:
+        #     self._do_matlab_eval(output_dir)
+        # if self.config['cleanup']:
+        #     for cls in self._classes:
+        #         if cls == '__background__':
+        #             continue
+        #         filename = self._get_voc_results_file_template().format(cls)
+        #         os.remove(filename)
 
     def competition_mode(self, on):
         if on:
