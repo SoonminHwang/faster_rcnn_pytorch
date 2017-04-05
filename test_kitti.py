@@ -21,10 +21,13 @@ cfg_file = 'experiments/cfgs/faster_rcnn_end2end_kitti.yml'
 # trained_model = 'models/saved_model3/faster_rcnn_70000.h5'
 
 #exp_date = '2017-04-03_12-10'
-exp_date = '2017-04-03_17-33'
+#exp_date = '2017-04-03_17-33'
+exp_date = '2017-04-04_06-00'
 
 #model = 'faster_rcnn_100000.h5'
-model = 'faster_rcnn_90000.h5'
+#model = 'faster_rcnn_90000.h5'
+model = 'faster_rcnn_230000.h5'
+
 trained_model = 'outputs/kitti_vgg16_rgb/kittivoc_%s/%s' % (exp_date, model)
 
 rand_seed = 1024
@@ -170,7 +173,7 @@ if __name__ == '__main__':
 
     net.MAX_SIZE = 3000
     print 'Detector scale: %d ->' % net.SCALES[0],
-    net.SCALES = (600,)
+    net.SCALES = (755,)
     print '%d.' % net.SCALES[0]
 
 

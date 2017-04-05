@@ -41,6 +41,8 @@ class kittivoc(imdb):
                          'Pedestrian', 'Car', 'Cyclist')
         self._class_to_ind = dict(zip(self.classes, xrange(self.num_classes)))
         self._image_ext = '.jpg'
+        self._depth_ext = '.png'
+        self._edge_ext = '.png'
         # self._image_index = self._load_image_set_index()
         
         with open( os.path.join(self._data_path, 'ImageSets', 'Main', image_set + '.txt'), 'r' ) as f:
@@ -84,6 +86,75 @@ class kittivoc(imdb):
                 'Path does not exist: {}'.format(image_path)
         return image_path
 
+    def edge_path_at(self, i):
+        """
+        Return the absolute path to image i in the image sequence.
+        """
+        return self.edge_path_from_index(self._image_index[i])
+
+    def edge_path_from_index(self, index):
+        """
+        Construct an image path from the image's "index" identifier
+        :param index filename stem e.g. 000000
+        :return filepath
+        """
+        image_path = os.path.join(self._data_path, 'ResizedEdgeImages',
+                                  index + self._edge_ext)
+        assert os.path.exists(image_path), \
+                'Path does not exist: {}'.format(image_path)
+        return image_path
+
+    def depth_path_at(self, i):
+        """
+        Return the absolute path to image i in the image sequence.
+        """
+        return self.depth_path_from_index(self._image_index[i])
+
+    def depth_path_from_index(self, index):
+        """
+        Construct an image path from the image's "index" identifier
+        :param index filename stem e.g. 000000
+        :return filepath
+        """
+        image_path = os.path.join(self._data_path, 'DepthImages',
+                                  index + self._depth_ext)
+        assert os.path.exists(image_path), \
+                'Path does not exist: {}'.format(image_path)
+        return image_path
+
+    def calib_path_from_index(self, index):    
+        # To compute metric depth from disparity
+        calib_path = os.path.join(self._data_path, 'Calibration',
+                                  index + '.txt')
+        assert os.path.exists(calib_path), \
+                'Path does not exist: {}'.format(calib_path)
+        return calib_path
+
+
+    def _read_calib_file(self, file):
+        float_chars = set("0123456789.e+- ")
+
+        data = {}
+        with open(file, 'r') as f:
+            lines = [line.rstrip('\n') for line in f.readlines()]
+            
+            for line in lines:          
+                try:
+                    key, value = line.split(':')
+                except:
+                    continue
+
+                value = value.strip()
+                data[key] = value
+                if float_chars.issuperset(value):
+                    # try to cast to float array
+                    try:
+                        data[key] = np.array(map(float, value.split(' ')))
+                    except ValueError:
+                        pass  # casting error: data[key] already eq. value, so pass
+        return data
+
+
     # def _load_image_set_index(self):
     #     """
     #     Load the indexes listed in this dataset's image set file.
@@ -123,6 +194,27 @@ class kittivoc(imdb):
         print 'wrote gt roidb to {}'.format(cache_file)
 
         return gt_roidb
+
+    def append_ped_cyc_images(self):
+        roidb_old = self.roidb[:]
+
+        ped_ind, cyc_ind, car_ind = self._class_to_ind['Pedestrian'], self._class_to_ind['Cyclist'], self._class_to_ind['Car']
+        
+        ratios_ped = 6
+        ratios_cyc = 17
+
+        for ix, r in enumerate(roidb_old):
+            if ped_ind in r['gt_classes']:
+                # r['gamma'] = True
+                for ii in xrange(ratios_ped):
+                    self.roidb.append(r)
+                    self._image_index.append( self._image_index[ix] )
+
+            elif cyc_ind in r['gt_classes']:
+                for ii in xrange(ratios_cyc):
+                    self.roidb.append(r)
+                    self._image_index.append( self._image_index[ix] )
+    
 
     def selective_search_roidb(self):
         """
@@ -215,6 +307,12 @@ class kittivoc(imdb):
         Load image and bounding boxes info from XML file in the PASCAL VOC
         format.
         """
+
+        calib_file = self.calib_path_from_index(index)
+        cal = self._read_calib_file(calib_file)
+        f = cal['P2'][0]
+        B = 0.54
+
         filename = os.path.join(self._data_path, 'Annotations', index + '.xml')
         tree = ET.parse(filename)
         objs = tree.findall('object')
@@ -279,7 +377,10 @@ class kittivoc(imdb):
                 'dontcare_areas' : dontcare_areas,
                 'gt_overlaps' : overlaps,
                 'flipped' : False,
-                'seg_areas' : seg_areas}
+                'seg_areas' : seg_areas,
+                'gamma' : False,
+                'focal' : f,
+                'baseline' : B}
 
     def _get_comp_id(self):
         comp_id = (self._comp_id + '_' + self._salt if self.config['use_salt']

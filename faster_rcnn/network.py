@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+import torch.nn.init as weight_init
 from torch.autograd import Variable
 import numpy as np
 
@@ -11,6 +12,8 @@ class Conv2d(nn.Module):
         self.conv = nn.Conv2d(in_channels, out_channels, kernel_size, stride, padding=padding)
         self.bn = nn.BatchNorm2d(out_channels, eps=0.001, momentum=0, affine=True) if bn else None
         self.relu = nn.ReLU(inplace=True) if relu else None
+
+        weight_init.xavier_normal(self.conv.weight)
 
     def forward(self, x):
         x = self.conv(x)
@@ -59,9 +62,20 @@ def load_pretrained_npy(faster_rcnn_model, fname):
         # # print param.size()
         if name.find('bn.') >= 0:
             continue
-        i, j = int(name[4]), int(name[6]) + 1
+        
+        # i, j = int(name[4]), int(name[6]) + 1
+        i, j = name.split('.')[:2]
+        try:
+            j = int(j) + 1
+        except:
+            continue
+            
         ptype = 'weights' if name[-1] == 't' else 'biases'
-        key = 'conv{}_{}'.format(i, j)
+        key = '{}_{}'.format(i, j)
+        # key = '_'.join( name.split('.')[:2] )
+        if key not in params.keys():
+            continue
+
         param = torch.from_numpy(params[key][ptype])
 
         if ptype == 'weights':
@@ -80,6 +94,42 @@ def load_pretrained_npy(faster_rcnn_model, fname):
         key = '{}.bias'.format(k)
         param = torch.from_numpy(params[v]['biases'])
         frcnn_dict[key].copy_(param)
+
+# def load_pretrained_npy(faster_rcnn_model, fname):
+#     params = np.load(fname).item()
+#     # vgg16
+#     vgg16_dict = faster_rcnn_model.rpn.features.state_dict()
+#     for name, val in vgg16_dict.items():
+#         # # print name
+#         # # print val.size()
+#         # # print param.size()
+#         if name.find('bn.') >= 0:
+#             continue
+
+#         import ipdb
+#         ipdb.set_trace()
+
+#         i, j = int(name[4]), int(name[6]) + 1
+#         ptype = 'weights' if name[-1] == 't' else 'biases'
+#         key = 'conv{}_{}'.format(i, j)
+#         param = torch.from_numpy(params[key][ptype])
+
+#         if ptype == 'weights':
+#             param = param.permute(3, 2, 0, 1)
+
+#         val.copy_(param)
+
+#     # fc6 fc7
+#     frcnn_dict = faster_rcnn_model.state_dict()
+#     pairs = {'fc6.fc': 'fc6', 'fc7.fc': 'fc7'}
+#     for k, v in pairs.items():
+#         key = '{}.weight'.format(k)
+#         param = torch.from_numpy(params[v]['weights']).permute(1, 0)
+#         frcnn_dict[key].copy_(param)
+
+#         key = '{}.bias'.format(k)
+#         param = torch.from_numpy(params[v]['biases'])
+#         frcnn_dict[key].copy_(param)
 
 
 def np_to_variable(x, is_cuda=True, dtype=torch.FloatTensor):

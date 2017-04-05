@@ -37,6 +37,8 @@ __C.ANCHOR_SCALES = [8, 16, 32]
 __C.NUM_ANCHORS = 70
 __C.NCLASSES = 21
 
+__C.INPUT = ['image']
+
 # multiscale training and testing
 __C.IS_MULTISCALE = False
 __C.IS_EXTRAPOLATING = True

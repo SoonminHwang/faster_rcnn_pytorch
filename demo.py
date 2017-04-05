@@ -56,7 +56,8 @@ def test():
         
     image = cv2.imread(im_file)
 
-    model_file = 'models/saved_model3/faster_rcnn_100000.h5'
+    #model_file = 'models/saved_model3/faster_rcnn_100000.h5'
+    model_file = 'outputs/kitti_vgg16_rgb/kittivoc_2017-04-04_06-00/faster_rcnn_10000.h5'
 
     classes = ('__background__', 'Pedestrian', 'Car', 'Cyclist')
     detector = FasterRCNN(classes=classes)    
@@ -68,7 +69,7 @@ def test():
 
     detector.MAX_SIZE = 3000
     print 'Detector scale: %d ->' % detector.SCALES[0],
-    detector.SCALES = (375,)
+    detector.SCALES = (600,)
     print '%d.' % detector.SCALES[0]
 
     dummy = np.zeros((755, 2500, 3), dtype=np.uint8) + 128    

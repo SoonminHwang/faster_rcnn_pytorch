@@ -4,8 +4,10 @@ IS_MULTISCALE: False
 NET_NAME: VGGnet
 # ANCHOR_SCALES: [8, 16, 32]
 NUM_ANCHORS: 70
-
 NCLASSES: 4
+
+INPUT: ['image', 'depth']
+
 TRAIN:
   OHEM: False
   RPN_BATCHSIZE: 300

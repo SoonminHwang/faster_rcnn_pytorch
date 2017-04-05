@@ -173,7 +173,10 @@ def build_voc_dirs(outdir):
     mkdir(os.path.join(outdir, 'ImageSets', 'Layout'))
     mkdir(os.path.join(outdir, 'ImageSets', 'Main'))
     mkdir(os.path.join(outdir, 'ImageSets', 'Segmentation'))
+    mkdir(os.path.join(outdir, 'Calibration'))
     mkdir(os.path.join(outdir, 'JPEGImages'))
+    mkdir(os.path.join(outdir, 'DepthImages'))
+    mkdir(os.path.join(outdir, 'ResizedEdgeImages'))
     mkdir(os.path.join(outdir, 'SegmentationClass'))
     mkdir(os.path.join(outdir, 'SegmentationObject'))
 
@@ -212,8 +215,13 @@ if __name__ == '__main__':
     # for kitti only provides training labels
     for dset in ['train']:
 
+        _calibdir = os.path.join(_kittidir, 'training', 'calib')
         _labeldir = os.path.join(_kittidir, 'training', 'label_2')
-        _imagedir = os.path.join(_kittidir, 'training', 'image_2')
+        # _imagedir = os.path.join(_kittidir, 'training', 'image_2')
+        _imagedir = os.path.join(_kittidir, 'training', 'flatten_image_2')
+        
+        _depthdir = os.path.join(_kittidir, 'training', 'velo_dispmap_2')
+        _edgedir = os.path.join(_kittidir, 'training', 'flatten_edge_2')
         """
         class_sets = ('pedestrian', 'cyclist', 'car', 'person_sitting', 'van', 'truck', 'tram', 'misc', 'dontcare')
         """
@@ -232,6 +240,9 @@ if __name__ == '__main__':
             with open(file, 'r') as f:
                 lines = f.readlines()
             img_file = os.path.join(_imagedir, stem + '.png')
+            calib_file = os.path.join(_calibdir, stem + '.txt')
+            depth_file = os.path.join(_depthdir, stem + '.png')
+            edge_file = os.path.join(_edgedir, stem + '.png')
             img = cv2.imread(img_file)
             img_size = img.shape
 
@@ -240,6 +251,12 @@ if __name__ == '__main__':
                 _draw_on_image(img, objs, class_sets_dict)
 
             cv2.imwrite(os.path.join(_dest_img_dir, stem + '.jpg'), img)
+
+            import shutil
+            shutil.copy(calib_file, os.path.join( _dest_img_dir.replace('JPEGImages', 'Calibration'), stem + '.txt') )
+            shutil.copy(depth_file, os.path.join( _dest_img_dir.replace('JPEG', 'Depth'), stem + '.png') )
+            shutil.copy(edge_file, os.path.join( _dest_img_dir.replace('JPEG', 'ResizedEdge'), stem + '.png') )
+
             xmlfile = os.path.join(_dest_label_dir, stem + '.xml')
             with open(xmlfile, 'w') as f:
                 f.write(doc.toprettyxml(indent='	'))

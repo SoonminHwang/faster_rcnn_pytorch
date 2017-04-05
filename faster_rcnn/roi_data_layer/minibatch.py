@@ -31,9 +31,10 @@ def get_minibatch(roidb, num_classes):
     fg_rois_per_image = np.round(cfg.TRAIN.FG_FRACTION * rois_per_image)
 
     # Get the input image blob, formatted for caffe
-    im_blob, im_scales = _get_image_blob(roidb, random_scale_inds)
+    # im_blob, im_scales = _get_image_blob(roidb, random_scale_inds)
+    # blobs = {'data': im_blob}
 
-    blobs = {'data': im_blob}
+    blobs, im_scales = _get_input_blob(roidb, random_scale_inds)
 
     if cfg.TRAIN.HAS_RPN:
         assert len(im_scales) == 1, "Single batch only"
@@ -49,10 +50,18 @@ def get_minibatch(roidb, num_classes):
         # blobs['gt_ishard'] = roidb[0]['gt_ishard'][gt_inds]
         blobs['dontcare_areas'] = roidb[0]['dontcare_areas'] * im_scales[0] \
             if 'dontcare_areas' in roidb[0] else np.zeros([0, 4], dtype=float)
+        # blobs['im_info'] = np.array(
+        #     [[im_blob.shape[1], im_blob.shape[2], im_scales[0]]],
+        #     dtype=np.float32)
         blobs['im_info'] = np.array(
-            [[im_blob.shape[1], im_blob.shape[2], im_scales[0]]],
+            [[blobs['image'].shape[1], blobs['image'].shape[2], im_scales[0]]],
             dtype=np.float32)
         blobs['im_name'] = os.path.basename(roidb[0]['image'])
+
+        if 'depth' in cfg.INPUT:
+            blobs['depth_name'] = os.path.basename(roidb[0]['depth'])
+        if 'edge' in cfg.INPUT:
+            blobs['edge_name'] = os.path.basename(roidb[0]['edge'])
 
     else: # not using RPN
         # Now, build the region of interest and label blobs
@@ -159,6 +168,84 @@ def _get_image_blob(roidb, scale_inds):
     blob = im_list_to_blob(processed_ims)
 
     return blob, im_scales
+
+def _get_input_blob(roidb, scale_inds):
+    """Builds an input blob from the images in the roidb at the specified
+    scales.
+    """
+
+    ## On-the-fly Data augmentation
+    def _flip(image):
+        return image[:, ::-1, ...]
+
+    def _gamma_correction(image):
+        import numpy.random as npr
+
+        invGamma = 1.0 / npr.uniform(cfg.TRAIN.GAMMA_RNG[0], cfg.TRAIN.GAMMA_RNG[1], size=(1))
+        table = np.array( [((i / 255.0) ** invGamma) * 255 for i in np.arange(0, 256)]).astype(np.uint8)
+        image_g = cv2.LUT( image, table )
+        return image_g
+
+
+    num_images = len(roidb)
+        
+    blob = {}
+    for i in xrange(num_images):
+
+        target_size = cfg.TRAIN.SCALES[scale_inds[i]]
+
+        input_types = cfg.INPUT
+
+        if 'image' in input_types:
+            im = cv2.imread(roidb[i]['image'])
+            if roidb[i]['flipped']:
+                im = _flip(im)
+            if roidb[i]['gamma']:
+                im = _gamma_correction(im)
+
+
+            im, im_scale = prep_im_for_blob(im, cfg.PIXEL_MEANS, target_size, cfg.TRAIN.MAX_SIZE)                    
+            blob['image'] = im_list_to_blob([im])
+
+        else:
+            print('Keyword "image" should be specified in cfg.INPUT.')
+            raise NotImplementedError
+
+
+        if 'depth' in input_types:
+            depth = cv2.imread(roidb[i]['depth'], -1)  # 16-bit png
+
+            # From kitti/flow2015/devkit/matlab/disp_read.m,
+            assert depth.dtype == np.uint16, "Date type of depth image must be uint16."
+                
+            depth = depth.astype(np.float32) / 256.0        
+            
+            mask = depth == 0.0
+            depth[ mask ] = -1
+            depth = roidb[i]['focal'] * roidb[i]['baseline'] / depth
+            depth[ mask ] = 0.0            
+
+            max_depth = 100.0
+            depth = depth / max_depth
+
+            if roidb[i]['flipped']:
+                depth = _flip(depth)
+
+            depth, _ = prep_im_for_blob(depth, 0.5, target_size, cfg.TRAIN.MAX_SIZE)
+            blob['depth'] = im_list_to_blob([depth[:,:,np.newaxis]])
+
+
+        if 'edge' in input_types:
+            edge = cv2.imread(roidb[i]['edge'], -1)
+
+            if roidb[i]['flipped']:
+                edge = _flip(edge)
+
+            edge, _ = prep_im_for_blob(edge, 128.0, target_size, cfg.TRAIN.MAX_SIZE)
+            blob['edge'] = im_list_to_blob([edge[:,:,np.newaxis]])
+    
+    return blob, [im_scale]
+
 
 def _project_im_rois(im_rois, im_scale_factor):
     """Project image RoIs into the rescaled training image."""

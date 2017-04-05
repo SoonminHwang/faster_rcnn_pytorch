@@ -4,8 +4,8 @@ import numpy as np
 from datetime import datetime
 
 from faster_rcnn import network
-from faster_rcnn.faster_rcnn import FasterRCNN, RPN
-# from faster_rcnn.faster_rcnn_rgbd import FasterRCNN_RGBD2
+# from faster_rcnn.faster_rcnn import FasterRCNN, RPN
+from faster_rcnn.faster_rcnn_rgbd import FasterRCNN_RGBD2
 from faster_rcnn.utils.timer import Timer
 
 import faster_rcnn.roi_data_layer.roidb as rdl_roidb
@@ -41,7 +41,7 @@ nowStr = datetime.now().strftime('kittivoc_%Y-%m-%d_%H-%M')
 imdb_name = 'kittivoc_train'
 cfg_file = 'experiments/cfgs/faster_rcnn_end2end_kitti.yml'
 pretrained_model = 'data/pretrained_model/VGG_imagenet.npy'
-output_dir = os.path.join('outputs', 'kitti_vgg16_rgb', nowStr )
+output_dir = os.path.join('outputs', 'kitti_vgg16_rgbd', nowStr )
 
 if not os.path.exists(output_dir):
     os.makedirs(output_dir)
@@ -90,7 +90,7 @@ data_layer = RoIDataLayer(roidb, imdb.num_classes)
 
 # load net
 # with torch.cuda.device(1):
-net = FasterRCNN(classes=imdb.classes, debug=_DEBUG)
+net = FasterRCNN_RGBD2(classes=imdb.classes, debug=_DEBUG)
 
 network.weights_normal_init(net, dev=0.01)
 network.load_pretrained_npy(net, pretrained_model)
@@ -139,9 +139,11 @@ for step in range(start_step, end_step+1):
     gt_boxes = blobs['gt_boxes']
     gt_ishard = blobs['gt_ishard']
     dontcare_areas = blobs['dontcare_areas']
-    
+
+    depth_data = blobs['depth']
+
     # forward
-    net(im_data, im_info, gt_boxes, gt_ishard, dontcare_areas)
+    net(im_data, depth_data, im_info, gt_boxes, gt_ishard, dontcare_areas)
     loss = net.loss + net.rpn.loss
 
     if _DEBUG:
