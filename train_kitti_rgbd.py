@@ -38,8 +38,10 @@ nowStr = datetime.now().strftime('kittivoc_%Y-%m-%d_%H-%M')
 
 # hyper-parameters
 # ------------
+# exp_name = 'vgg16_rgbd2'
+exp_name = datetime.now().strftime('[rgbd2]vgg16_%m-%d_%H-%M')
 imdb_name = 'kittivoc_train'
-cfg_file = 'experiments/cfgs/faster_rcnn_end2end_kitti.yml'
+cfg_file = 'experiments/cfgs/faster_rcnn_end2end_kitti_rgbd.yml'
 pretrained_model = 'data/pretrained_model/VGG_imagenet.npy'
 output_dir = os.path.join('outputs', 'kitti_vgg16_rgbd', nowStr )
 
@@ -60,8 +62,8 @@ lr_decay = 1./10
 rand_seed = 1024
 _DEBUG = True
 use_tensorboard = True
-remove_all_log = False   # remove all historical experiments in TensorBoard
-exp_name = None # the previous experiment name in TensorBoard
+# remove_all_log = False   # remove all historical experiments in TensorBoard
+# exp_name = None # the previous experiment name in TensorBoard
 
 # ------------
 
@@ -115,13 +117,21 @@ if use_tensorboard:
     #cc = CrayonClient(hostname='127.0.0.1')
     print( '##### Use tensorboard via crayon #####\n')
     cc = CrayonClient(hostname='143.248.39.34', port=8889)
-    if remove_all_log:
-        cc.remove_all_experiments()
-    if exp_name is None:
-        exp_name = datetime.now().strftime('vgg16_%m-%d_%H-%M')
-        exp = cc.create_experiment(exp_name)
-    else:
-        exp = cc.open_experiment(exp_name)
+
+    exp_names = cc.get_experiment_names()
+    for name in exp_names:
+        if '[rgbd2]vgg16' in name:
+            cc.remove_experiment(name)
+    
+    exp = cc.create_experiment(exp_name)
+
+    # if remove_all_log:
+    #     cc.remove_all_experiments()
+    # if exp_name is None:
+    #     exp_name = datetime.now().strftime('[rgbd2]vgg16_%m-%d_%H-%M')
+    #     exp = cc.create_experiment(exp_name)
+    # else:
+    #     exp = cc.open_experiment(exp_name)
 
 # training
 train_loss = 0
@@ -201,9 +211,10 @@ for step in range(start_step, end_step+1):
         # Current detection
         save_name = save_name.replace('log', 'jpg')
         image = im_data[0] + cfg.PIXEL_MEANS
+        depth = depth_data[0, :, :, 0]
                 
         net.eval()        
-        dets, scores, classes = net.detect(image, 0.7)        
+        dets, scores, classes = net.detect(image, depth, 0.7)        
         visualize(image, dets, scores, classes, imdb.classes, save_name)
         net.train()
 

@@ -6,7 +6,7 @@ NET_NAME: VGGnet
 NUM_ANCHORS: 70
 NCLASSES: 4
 
-INPUT: ['image']
+INPUT: ['image', 'depth']
 
 TRAIN:
   OHEM: False

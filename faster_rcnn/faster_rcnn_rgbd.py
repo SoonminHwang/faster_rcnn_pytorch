@@ -336,13 +336,15 @@ class FasterRCNN_RGBD2(nn.Module):
         # return pred_boxes, scores, self.classes[inds]
         return pred_boxes, scores, [ self.classes[ii] for ii in inds ]
 
-    def detect(self, image, thr=0.3):
-        im_data, im_scales = self.get_image_blob(image)
+    def detect(self, image, depth, thr=0.3):
+        im_data, im_scales = self.get_image_blob(image, self.PIXEL_MEANS)
+        depth_data, im_scales = self.get_image_blob(depth, 0)
+
         im_info = np.array(
             [[im_data.shape[1], im_data.shape[2], im_scales[0]]],
             dtype=np.float32)
 
-        cls_prob, bbox_pred, rois = self(im_data, im_info)
+        cls_prob, bbox_pred, rois = self(im_data, depth_data, im_info)
         pred_boxes, scores, classes = \
             self.interpret_faster_rcnn(cls_prob, bbox_pred, rois, im_info, image.shape, min_score=thr)
         return pred_boxes, scores, classes
@@ -358,7 +360,7 @@ class FasterRCNN_RGBD2(nn.Module):
 
         return blob, np.array(im_scale_factors)
 
-    def get_image_blob(self, im):
+    def get_image_blob(self, im, means):
         """Converts an image into a network input.
         Arguments:
             im (ndarray): a color image in BGR order
@@ -368,7 +370,7 @@ class FasterRCNN_RGBD2(nn.Module):
                 in the image pyramid
         """
         im_orig = im.astype(np.float32, copy=True)
-        im_orig -= self.PIXEL_MEANS
+        im_orig -= means
 
         im_shape = im_orig.shape
         im_size_min = np.min(im_shape[0:2])
@@ -385,6 +387,10 @@ class FasterRCNN_RGBD2(nn.Module):
             im = cv2.resize(im_orig, None, None, fx=im_scale, fy=im_scale,
                             interpolation=cv2.INTER_LINEAR)
             im_scale_factors.append(im_scale)
+
+            if len(im.shape) < 3:
+                im = im[:,:,np.newaxis]
+
             processed_ims.append(im)
 
         # Create a blob to hold the input images
