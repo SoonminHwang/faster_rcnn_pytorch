@@ -5,7 +5,9 @@ import cPickle
 import numpy as np
 
 from faster_rcnn import network
-from faster_rcnn.faster_rcnn import FasterRCNN, RPN
+#from faster_rcnn.faster_rcnn import FasterRCNN, RPN
+from faster_rcnn.faster_rcnn_rgbd import FasterRCNN_RGBD2
+
 from faster_rcnn.utils.timer import Timer
 from faster_rcnn.fast_rcnn.nms_wrapper import nms
 
@@ -22,20 +24,20 @@ imdb_name = 'kittivoc_val'
 #exp_date = '2017-04-03_12-10'
 #exp_date = '2017-04-03_17-33'
 #exp_date = '2017-04-04_06-00'
-exp_date = '2017-04-05_14-09'
+exp_date = '2017-04-05_14-37'
 
 #model = 'faster_rcnn_100000.h5'
 #model = 'faster_rcnn_90000.h5'
-model = 'faster_rcnn_100000.h5'
+model = 'faster_rcnn_70000.h5'
 
-trained_model = 'outputs/kitti_vgg16_rgb/kittivoc_%s/%s' % (exp_date, model)
-cfg_file = 'outputs/kitti_vgg16_rgb/kittivoc_%s/faster_rcnn_end2end_kitti.yml' % exp_date
+trained_model = 'outputs/kitti_vgg16_rgbd/kittivoc_%s/%s' % (exp_date, model)
+cfg_file = 'outputs/kitti_vgg16_rgbd/kittivoc_%s/faster_rcnn_end2end_kitti_rgbd.yml' % exp_date
 #cfg_file = 'experiments/cfgs/faster_rcnn_end2end_kitti.yml'
 
 rand_seed = 1024
 
 # save_name = 'faster_rcnn_100000'
-save_name = 'outputs/kitti_vgg16_rgb/kittivoc_%s/eval/%s' % (exp_date, model.split('.')[0])
+save_name = 'outputs/kitti_vgg16_rgbd/kittivoc_%s/eval/%s' % (exp_date, model.split('.')[0])
 max_per_image = 300
 thresh = 0.05
 
@@ -166,7 +168,7 @@ if __name__ == '__main__':
     imdb.competition_mode(on=True)
 
     # load net
-    net = FasterRCNN(classes=imdb.classes, debug=False)
+    net = FasterRCNN_RGBD2(classes=imdb.classes, debug=False)
     network.load_net(trained_model, net)
     print('load model successfully!')
 
